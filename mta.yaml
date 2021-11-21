@@ -1,0 +1,121 @@
+_schema-version: "3.1"
+ID: demoAP2
+description: A simple CAP project.
+version: 1.0.0
+modules:
+- name: demoAP2-srv
+  type: nodejs
+  path: gen/srv
+  requires:
+  - name: demoAP2-db
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  parameters:
+    buildpack: nodejs_buildpack
+- name: demoAP2-db-deployer
+  type: hdb
+  path: gen/db
+  requires:
+  - name: demoAP2-db
+  parameters:
+    buildpack: nodejs_buildpack
+- name: demoap2-approuter
+  type: approuter.nodejs
+  path: demoap2-approuter
+  requires:
+  - name: demoAP2_html_repo_runtime
+  - name: uaa_demoAP2
+  - name: srv-api
+    group: destinations
+    properties:
+        forwardAuthToken: true
+        strictSSL: false
+        name: srv-api
+        url: ~{srv-url}
+  - name: demoAP2-dest-srv
+    group: destinations
+    properties:
+      forwardAuthToken: false
+      name: ui5
+      url: https://ui5.sap.com
+  parameters:
+    disk-quota: 256M
+    memory: 256M
+- name: demoAP2_ui_deployer
+  type: com.sap.application.content
+  path: .
+  requires:
+  - name: demoAP2_html_repo_host
+    parameters:
+      content-target: true
+  build-parameters:
+    build-result: resources
+    requires:
+    - artifacts:
+      - bewlfiori.zip
+      name: bewlfiori
+      target-path: resources/
+- name: bewlfiori
+  type: html5
+  path: app/fiori
+  build-parameters:
+    build-result: dist
+    builder: custom
+    commands:
+    - npm install
+    - npm run build:cf
+    supported-platforms: []
+resources:
+- name: demoAP2-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+  properties:
+    hdi-service-name: ${service-name}
+- name: demoAP2_html_repo_runtime
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-plan: app-runtime
+- name: uaa_demoAP2
+  type: org.cloudfoundry.managed-service
+  parameters:
+    path: ./xs-security.json
+    service: xsuaa
+    service-name: demoAP2-xsuaa-service
+    service-plan: application
+- name: demoAP2_html_repo_host
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-plan: app-host
+- name: demoAP2-dest-srv
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      HTML5Runtime_enabled: false
+      init_data:
+        instance:
+          destinations:
+          - Authentication: NoAuthentication
+            Name: ui5
+            ProxyType: Internet
+            Type: HTTP
+            URL: https://ui5.sap.com
+          existing_destinations_policy: update
+      version: 1.0.0
+    service: destination
+    service-name: demoAP2-dest-srv
+    service-plan: lite
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+  - builder: custom
+    commands:
+    - npm install --production
+    - npx -p @sap/cds-dk cds build --production
